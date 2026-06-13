@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, Response
 from flask_cors import CORS
 import pandas as pd
 from io import StringIO
@@ -7,7 +7,7 @@ from datetime import datetime
 import os
 import math
 
-app = Flask(__name__, static_folder=".")
+app = Flask(__name__)
 CORS(app)
 
 GOOGLE_SHEETS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSkWlqiAqvE4DQCu9UV53_ssWwf5CEwodDc5oBRZL7Bpyy5qcy7yPlg-zk10LDO02B5QdUzpRqLbe7l/pub?output=csv"
@@ -38,41 +38,33 @@ def api_dados():
     df, erro = carregar_dados()
     if erro:
         return jsonify({"erro": erro}), 500
-
     total = round(float(df["Valor"].sum()), 2)
     total_transacoes = len(df)
     totais = df.groupby("Veiculo")["Valor"].sum()
     veiculo_maior = totais.idxmax()
     valor_maior = round(float(totais.max()), 2)
-
     por_veiculo = df.groupby("Veiculo").agg(total=("Valor","sum"),transacoes=("Valor","count")).reset_index().sort_values("total",ascending=False)
     por_veiculo["total"] = por_veiculo["total"].round(2)
-
     dias_ativos = df.groupby("Veiculo")["Data"].nunique()
     total_veiculo = df.groupby("Veiculo")["Valor"].sum()
-    media_diaria = (total_veiculo / dias_ativos).round(2).reset_index()
+    media_diaria = (total_veiculo/dias_ativos).round(2).reset_index()
     media_diaria.columns = ["Veiculo","media_diaria"]
     media_diaria["dias_ativos"] = dias_ativos.values
     media_diaria["total"] = total_veiculo.round(2).values
-    media_diaria = media_diaria.sort_values("media_diaria", ascending=False)
-
+    media_diaria = media_diaria.sort_values("media_diaria",ascending=False)
     df["mes"] = df["Data"].dt.to_period("M").astype(str)
     por_mes = df.groupby("mes")["Valor"].sum().round(2).reset_index().sort_values("mes")
-
     dias_map = {"Monday":"Seg","Tuesday":"Ter","Wednesday":"Qua","Thursday":"Qui","Friday":"Sex","Saturday":"Sab","Sunday":"Dom"}
     df["dow"] = df["Data"].dt.day_name().map(dias_map)
     ordem = ["Seg","Ter","Qua","Qui","Sex","Sab","Dom"]
     por_dow = df.groupby("dow")["Valor"].sum().round(2).reindex(ordem).fillna(0).reset_index()
-
-    df_clean = df[~df["Descricao"].str.contains("VALORES ANTERIORES", na=False)]
+    df_clean = df[~df["Descricao"].str.contains("VALORES ANTERIORES",na=False)]
     top_rotas = df_clean.groupby("Descricao")["Valor"].sum().round(2).sort_values(ascending=False).head(10).reset_index()
-
-    media_tx = df.groupby("Veiculo")["Valor"].mean().round(2).reset_index().sort_values("Valor", ascending=False)
+    media_tx = df.groupby("Veiculo")["Valor"].mean().round(2).reset_index().sort_values("Valor",ascending=False)
     media_tx.columns = ["Veiculo","media_tx"]
-
     return jsonify({
         "atualizado_em": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
-        "kpis": {"total": total, "total_transacoes": total_transacoes, "veiculo_maior": veiculo_maior, "valor_maior": valor_maior},
+        "kpis": {"total":total,"total_transacoes":total_transacoes,"veiculo_maior":veiculo_maior,"valor_maior":valor_maior},
         "por_veiculo": clean_list(por_veiculo.to_dict(orient="records")),
         "media_diaria": clean_list(media_diaria.to_dict(orient="records")),
         "por_mes": clean_list(por_mes.to_dict(orient="records")),
@@ -83,7 +75,11 @@ def api_dados():
 
 @app.route("/")
 def index():
-    return app.send_static_file("dashboard_live.html")
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    html_path = os.path.join(base_dir, "dashboard_live.html")
+    with open(html_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return Response(content, mimetype="text/html")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
