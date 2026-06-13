@@ -5,7 +5,6 @@ from io import StringIO
 import urllib.request
 from datetime import datetime
 import os
-import json
 import math
 
 app = Flask(__name__, static_folder=".")
@@ -20,8 +19,7 @@ def carregar_dados():
         df = pd.read_csv(StringIO(csv_text))
         df.columns = ["Veiculo","Invoice","Conta","Placa","Data","Descricao","Valor","Status","DataPagamento"]
         df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
-        # Force Valor to numeric - handle comma as decimal separator
-        df["Valor"] = df["Valor"].astype(str).str.replace(",", ".").str.replace("[^0-9.\-]", "", regex=True)
+        df["Valor"] = df["Valor"].astype(str).str.replace("$", "", regex=False).str.replace(",", "", regex=False).str.strip()
         df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0)
         return df, None
     except Exception as e:
@@ -89,5 +87,4 @@ def index():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    print("Servidor rodando em http://localhost:" + str(port))
     app.run(debug=False, host="0.0.0.0", port=port)
